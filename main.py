@@ -28,6 +28,7 @@ y_true_data = []
 y_true_data.append(data[0])
 
 # y_error = []
+# yjfa_error = []
 
 
 class RealTimePlotApp:
