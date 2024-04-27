@@ -1,3 +1,5 @@
+import socket
+import pickle
 import tkinter as tk
 from tkinter import ttk
 import matplotlib.pyplot as plt
@@ -6,7 +8,7 @@ import numpy as np
 import pandas as pd
 import threading
 import time
-import keras
+from tensorflow import keras
 
 from sequence import X_test_seq, y_scaler
 
@@ -32,11 +34,14 @@ y_true_data.append(data[0])
 
 
 class RealTimePlotApp:
-    def __init__(self, root):
+    def __init__(self, root, receiver_socket):
+        self.receiver_socket = receiver_socket
+
         self.root = root
         self.root.title("Real-Time Plot App")
 
         self.y_error = []
+        self.y_true_data = []
 
         self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1, figsize=(20, 5), gridspec_kw={'height_ratios': [2, 1]})
         # self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1)
@@ -59,11 +64,16 @@ class RealTimePlotApp:
         self.continue_from_pause = False  # Flag to indicate if the plot should continue from pause
         self.pause_time = 0
 
+        self.index = 0
+
     def start_plot(self):
         print("start")
         if not self.is_running:
             self.is_running = True
-            self.plot_thread = threading.Thread(target=self.update_plot)
+            # self.update_plot()
+
+            # self.plot_thread = threading.Thread(target=self.update_plot)
+            self.plot_thread = threading.Thread(target=self.fetch_data)
             self.plot_thread.start()
 
     def pause_plot(self):
@@ -76,6 +86,23 @@ class RealTimePlotApp:
             self.plot_thread = threading.Thread(target=self.update_plot)
             self.plot_thread.start()
 
+    def fetch_data(self):
+        for i in range(10000):
+            print("Waiting for a connection...")
+            connection, sender_address = self.receiver_socket.accept()
+            print("Connected to:", sender_address)
+            data_bytes = b""
+            while True:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    break
+                data_bytes += chunk
+            data = pickle.loads(data_bytes)
+            self.y_true_data.append(data)
+            self.update_plot()
+            print(time.strftime("[%Y-%m-%d %H:%M:%S]"), "- Sender's IP:", sender_address[0], "- Received data:", data)
+            connection.close()
+
     def update_plot(self):
         print("update")
         if not self.continue_from_pause:
@@ -84,64 +111,60 @@ class RealTimePlotApp:
             i = 0
             x_data = list(range(100))
         # print(i, len(y_pred_data))
-        while self.is_running and i < len(y_pred_data):
-            self.ax1.clear()
-            if i <= limit:
-                self.ax1.set_xlim(left=0, right=limit)
-                self.ax2.set_xlim(left=0, right=limit)
-            else:
-                self.ax1.set_xlim(left=i-10, right=i+limit)
-                self.ax2.set_xlim(left=i-10, right=i+limit)
+        # while self.is_running and i < len(self.y_true_data):
+        print("i = ", self.index)
+        self.ax1.clear()
+        if self.index <= limit:
+            self.ax1.set_xlim(left=0, right=limit)
+            self.ax2.set_xlim(left=0, right=limit)
+        else:
+            self.ax1.set_xlim(left=self.index-10, right=self.index+limit)
+            self.ax2.set_xlim(left=self.index-10, right=self.index+limit)
 
-            out_true_data = y_true_data[:i+1]
-            x_data_plot = data_time[:i+1]
-            error = y_true_data[i] - y_pred_data[i]
-            self.y_error.append(error)
-            y_error_plot = self.y_error[:i+1]
-            # print("plot", len(x_data_plot), len(out_true_data))
-            # print("y_error: ", y_error_plot, x_data_plot)
-            if i < 0 and i % limit == 0:
-                out_true_data = y_true_data[i-limit:i]
-                #x_data_plot = data_time[i-limit:i]
-                # print('time', [x_time.split(' ')[1] for x_time in x_data_plot])
-                y_error_plot = self.y_error[i-limit:i]
-                # print("over limit", i, len(x_data_plot), len(y_error_plot))
-                # print("in y_error: ", y_error_plot, x_data_plot)
-                # self.ax1.set_xlim(left=i-10, right=i+limit)
-                # self.ax2.set_xlim(left=i-10, right=i+limit)
+        out_true_data = self.y_true_data[:i+1]
+        x_data_plot = data_time[:self.index+1]
+        error = self.y_true_data[self.index] - y_pred_data[self.index]
+        self.y_error.append(error)
+        y_error_plot = self.y_error[:self.index+1]
 
-            # self.pause_time = time.time()  # Record the time when paused
+        self.ax1.plot(data_time, y_pred_data, 'r-', marker='o', label='pred data')
+        self.ax1.plot(self.y_true_data, 'g-', marker='o', label='true data')
 
-            self.ax1.plot(data_time, y_pred_data, 'r-', marker='o', label='pred data')
-            self.ax1.plot(out_true_data, 'g-', marker='o', label='true data')
+        self.ax1.set_xlabel('Time')
+        self.ax1.set_ylabel('Amplitude')
+        self.ax1.set_title('Real-Time Plot')
+        self.ax1.tick_params(axis='x', labelrotation=90)
+        self.ax1.legend(loc='upper right')
 
-            self.ax1.set_xlabel('Time')
-            self.ax1.set_ylabel('Amplitude')
-            self.ax1.set_title('Real-Time Plot')
-            self.ax1.tick_params(axis='x', labelrotation=90)
-            self.ax1.legend(loc='upper right')
+        self.ax2.plot(data_time, np.zeros(100), 'k', linewidth=0)
+        bar_color = ['red' if err < 0 else 'green' for err in y_error_plot]
+        print("bar: ", len(x_data_plot), len(y_error_plot[:self.index+1]))
+        self.ax2.bar(x_data_plot, np.abs(y_error_plot), color=bar_color, width=0.1)
+        self.ax2.set_xlabel('Time')
+        self.ax2.set_ylabel('Amplitude')
+        self.ax2.set_title('Real-Time Plot')
+        self.ax2.tick_params(axis='x', labelrotation=90)
+        self.ax2.set_title('Error Plot (Red: Underestimate, Green: Overestimate)')
 
-            self.ax2.plot(data_time, np.zeros(100), 'k', linewidth=0)
-            bar_color = ['red' if err < 0 else 'green' for err in y_error_plot]
-            print("bar: ", len(x_data_plot), len(y_error_plot[:i+1]))
-            self.ax2.bar(x_data_plot, np.abs(y_error_plot), color=bar_color, width=0.1)
-            self.ax2.set_xlabel('Time')
-            self.ax2.set_ylabel('Amplitude')
-            self.ax2.set_title('Real-Time Plot')
-            self.ax2.tick_params(axis='x', labelrotation=90)
-            plt.title('Error Plot (Red: Underestimate, Green: Overestimate)')
+        self.fig.tight_layout()
 
-            self.fig.tight_layout()
+        self.canvas.draw()
 
-            self.canvas.draw()
-
-            # plt.tight_layout()
-            y_true_data.append(data[i+1])
-            i += 1
-            time.sleep(0.01)
+        # y_true_data.append(data[i+1])
+        self.index += 1
+        time.sleep(0.01)
 
 
 print("begin")
+
+receiver_port = 49156
+receiver_ip = socket.gethostbyname(socket.gethostname())
+receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+receiver_socket.bind((receiver_ip, receiver_port))
+receiver_socket.listen(1)
+print("Receiver IP:", receiver_ip, "    Receiver port:", receiver_port)
+
+
 root = tk.Tk()
 
 print(root.winfo_screenwidth())
@@ -160,6 +183,12 @@ left = int(display_width / 2 - window_width / 2)
 top = int(display_height / 2 - window_height / 2)
 root.geometry(f'{window_width}x{window_height}+{top}+{left}')
 
-app = RealTimePlotApp(root)
+app = RealTimePlotApp(root, receiver_socket)
 
+"""
+while 1:
+    #tk.update_idletasks()
+    root.update()
+    time.sleep(0.01)
+"""
 root.mainloop()
