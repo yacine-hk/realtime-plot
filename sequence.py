@@ -35,4 +35,6 @@ def to_sequence(data, time_steps=1):
 
 time_steps = 50
 # X_test_seq, y_test_seq = to_sequence(df_test, time_steps)
+
 X_test_seq, _ = to_sequence(df_test, time_steps)
+data_time = test.index[time_steps:].strftime('%Y-%m-%d %X')

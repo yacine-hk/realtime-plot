@@ -1,16 +1,14 @@
-import socket
 import pickle
 import tkinter as tk
 from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
-import pandas as pd
 import threading
 import time
 from tensorflow import keras
 
-from sequence import X_test_seq, y_scaler
+from sequence import X_test_seq, y_scaler, data_time
 
 
 model = keras.models.load_model('temp_popul.keras')
@@ -20,17 +18,6 @@ y_pred_data = []
 for i in list_data:
     pred_val = np.array(y_scaler.inverse_transform(model.predict(X_test_seq[i][None, ...])))
     y_pred_data.append(pred_val.item())
-
-df = pd.read_csv("df_test.csv")
-data = np.array(df['consumption'][50:])
-data_time = np.array(df['date'][50:])
-data_time = data_time[:100]
-
-y_true_data = []
-y_true_data.append(data[0])
-
-# y_error = []
-# yjfa_error = []
 
 
 class RealTimePlotApp:
@@ -121,13 +108,12 @@ class RealTimePlotApp:
             self.ax1.set_xlim(left=self.index-10, right=self.index+limit)
             self.ax2.set_xlim(left=self.index-10, right=self.index+limit)
 
-        out_true_data = self.y_true_data[:i+1]
         x_data_plot = data_time[:self.index+1]
         error = self.y_true_data[self.index] - y_pred_data[self.index]
         self.y_error.append(error)
         y_error_plot = self.y_error[:self.index+1]
 
-        self.ax1.plot(data_time, y_pred_data, 'r-', marker='o', label='pred data')
+        self.ax1.plot(data_time[:100], y_pred_data, 'r-', marker='o', label='pred data')
         self.ax1.plot(self.y_true_data, 'g-', marker='o', label='true data')
 
         self.ax1.set_xlabel('Time')
@@ -136,7 +122,7 @@ class RealTimePlotApp:
         self.ax1.tick_params(axis='x', labelrotation=90)
         self.ax1.legend(loc='upper right')
 
-        self.ax2.plot(data_time, np.zeros(100), 'k', linewidth=0)
+        self.ax2.plot(data_time[:100], np.zeros(100), 'k', linewidth=0)
         bar_color = ['red' if err < 0 else 'green' for err in y_error_plot]
         print("bar: ", len(x_data_plot), len(y_error_plot[:self.index+1]))
         self.ax2.bar(x_data_plot, np.abs(y_error_plot), color=bar_color, width=0.1)
@@ -153,42 +139,3 @@ class RealTimePlotApp:
         # y_true_data.append(data[i+1])
         self.index += 1
         time.sleep(0.01)
-
-
-print("begin")
-
-receiver_port = 49156
-receiver_ip = socket.gethostbyname(socket.gethostname())
-receiver_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-receiver_socket.bind((receiver_ip, receiver_port))
-receiver_socket.listen(1)
-print("Receiver IP:", receiver_ip, "    Receiver port:", receiver_port)
-
-
-root = tk.Tk()
-
-print(root.winfo_screenwidth())
-print(root.winfo_screenheight())
-
-display_width = root.winfo_screenwidth()
-display_height = root.winfo_screenheight()
-
-# window_height = int(display_height / 2)
-# window_width = int(display_width / 2)
-
-window_height = 800
-window_width = 1400
-
-left = int(display_width / 2 - window_width / 2)
-top = int(display_height / 2 - window_height / 2)
-root.geometry(f'{window_width}x{window_height}+{top}+{left}')
-
-app = RealTimePlotApp(root, receiver_socket)
-
-"""
-while 1:
-    #tk.update_idletasks()
-    root.update()
-    time.sleep(0.01)
-"""
-root.mainloop()

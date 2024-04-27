@@ -7,15 +7,10 @@ import numpy as np
 df = pd.read_csv("df_test.csv")
 data = np.array(df['consumption'][50:])
 
-data1 = {
-    "vector001": [1, 2, 3, 4, 5],
-    "vector002": [6, 7, 8, 9, 10]
-}
-
 
 receiver_port = 49156
-# receiver_ip = '192.168.1.9'
-receiver_ip = '127.0.1.1'
+# receiver_ip = '127.0.1.1'
+receiver_ip = input("client ip: ")
 
 i = 0
 while i < len(data):
